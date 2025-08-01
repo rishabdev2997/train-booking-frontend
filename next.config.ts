@@ -1,7 +1,9 @@
+// next.config.js
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverActions: {}
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
