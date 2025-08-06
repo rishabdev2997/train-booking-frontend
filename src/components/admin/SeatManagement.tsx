@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import API from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,11 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 type Seat = {
-  id: string;              // Unique seat id (may be train+date+number combo)
+  id: string;
   trainId: string;
   seatNumber: string;
-  date: string;            // Departure date (yyyy-MM-dd)
-  status: string;          // "AVAILABLE", "BOOKED", etc
+  date: string;        // corresponds to departureDate in backend
+  status: string;
 };
 
 type Train = {
@@ -23,10 +23,7 @@ type Train = {
   destination: string;
 };
 
-const STATUS_OPTIONS = [
-  "AVAILABLE",
-  "BOOKED"
-];
+const STATUS_OPTIONS = ["AVAILABLE", "BOOKED"];
 
 export default function SeatManagement() {
   const [trains, setTrains] = useState<Train[]>([]);
@@ -37,6 +34,7 @@ export default function SeatManagement() {
 
   const [searchSeat, setSearchSeat] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
+  const [searchTrainNumber, setSearchTrainNumber] = useState("");
   const [showSeatForm, setShowSeatForm] = useState(false);
   const [editSeat, setEditSeat] = useState<Seat | null>(null);
 
@@ -45,17 +43,17 @@ export default function SeatManagement() {
     status: "AVAILABLE",
   });
 
-  // Load train list on mount
   useEffect(() => {
-    API.get("/trains").then((res) => setTrains(res.data));
+    API.get("/trains")
+      .then((res) => setTrains(res.data))
+      .catch(() => toast.error("Failed to load train list"));
   }, []);
 
-  // Fetch seats for train and date
   const fetchSeats = async () => {
     if (!trainId || !date) return;
     setLoading(true);
     try {
-      const res = await API.get(`/seats?trainId=${trainId}&departureDate=${date}`);
+      const res = await API.get(`/api/v1/seats?trainId=${trainId}&departureDate=${date}`);
       setSeats(res.data);
     } catch {
       toast.error("Failed to fetch seats");
@@ -65,32 +63,29 @@ export default function SeatManagement() {
     }
   };
 
-  // Refetch when train/date changes
   useEffect(() => {
     fetchSeats();
-    // eslint-disable-next-line
   }, [trainId, date]);
 
-  // Filter for seat number and status
   const filteredSeats = seats.filter((s) => {
+    const train = trains.find((t) => t.id === s.trainId);
     const matchesNumber = searchSeat ? s.seatNumber.includes(searchSeat) : true;
     const matchesStatus = searchStatus ? s.status === searchStatus : true;
-    return matchesNumber && matchesStatus;
+    const matchesTrainNumber = searchTrainNumber ? train?.trainNumber.includes(searchTrainNumber) : true;
+    return matchesNumber && matchesStatus && matchesTrainNumber;
   });
 
-  // Form Handlers
   const resetForm = () => {
     setForm({ seatNumber: "", status: "AVAILABLE" });
     setEditSeat(null);
     setShowSeatForm(false);
   };
 
-  const handleSeatFormChange = (e: any) => {
+  const handleSeatFormChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
-  // Add or edit seat
-  const handleSeatSubmit = async (e: any) => {
+  const handleSeatSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!trainId || !date || !form.seatNumber) {
       toast.error("Choose train, date, and seat number");
@@ -98,8 +93,7 @@ export default function SeatManagement() {
     }
     try {
       if (editSeat) {
-        // No dedicated PUT in your API, so do status update only
-        await API.post(`/seats/update`, {
+        await API.post(`/api/v1/seats/update`, {
           trainId,
           departureDate: date,
           seatNumber: editSeat.seatNumber,
@@ -107,7 +101,7 @@ export default function SeatManagement() {
         });
         toast.success("Seat status updated");
       } else {
-        await API.post("/seats", {
+        await API.post("/api/v1/seats", {
           trainId,
           departureDate: date,
           seatNumber: form.seatNumber,
@@ -128,33 +122,31 @@ export default function SeatManagement() {
     setShowSeatForm(true);
   };
 
-  // Delete seat (assume a DELETE endpoint as POST is not idiomatic)
   const handleDelete = async (seat: Seat) => {
     if (!window.confirm("Delete this seat?")) return;
     try {
-      // If you lack a DELETE endpoint, you could call /seats/update to set status to INACTIVE instead.
-      await API.delete(`/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`);
+      await API.delete(
+        `/api/v1/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`
+      );
       toast.success("Seat deleted");
       fetchSeats();
     } catch {
-      toast.error("Delete failed (make sure backend supports DELETE by seat number/train/date)");
+      toast.error("Delete failed");
     }
   };
 
-  // Change seat status in situ
   const handleStatusChange = async (seat: Seat, newStatus: string) => {
     if (seat.status === newStatus) return;
     try {
-      await API.post(`/seats/update`, {
+      await API.post(`/api/v1/seats/update`, {
         trainId: seat.trainId,
-        departureDate: seat.date,
+        departureDate: seat.date, // Use seat.date here as your departureDate
         seatNumber: seat.seatNumber,
         status: newStatus,
       });
-      setSeats(seats =>
-        seats.map((s) =>
-          s.id === seat.id ? { ...s, status: newStatus } : s
-        )
+      // Optimistically update UI
+      setSeats((seats) =>
+        seats.map((s) => (s.id === seat.id ? { ...s, status: newStatus } : s))
       );
       toast.success("Seat status updated");
     } catch {
@@ -162,7 +154,6 @@ export default function SeatManagement() {
     }
   };
 
-  // Optionally, bulk initialize all seats
   const [initCount, setInitCount] = useState("");
   const handleInitialize = async () => {
     if (!trainId || !date || !initCount) {
@@ -171,7 +162,7 @@ export default function SeatManagement() {
     }
     try {
       await API.post(
-        `/seats/initialize?trainId=${trainId}&departureDate=${date}&totalSeats=${initCount}`
+        `/api/v1/seats/initialize?trainId=${trainId}&departureDate=${date}&totalSeats=${initCount}`
       );
       toast.success("Seats initialized");
       setInitCount("");
@@ -209,6 +200,7 @@ export default function SeatManagement() {
           />
         </div>
       </div>
+
       {trainId && date && (
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <Input
@@ -216,7 +208,12 @@ export default function SeatManagement() {
             value={searchSeat}
             onChange={(e) => setSearchSeat(e.target.value)}
             placeholder="Seat #"
-            aria-label="Seat number"
+          />
+          <Input
+            className="max-w-[8rem]"
+            value={searchTrainNumber}
+            onChange={(e) => setSearchTrainNumber(e.target.value)}
+            placeholder="Train #"
           />
           <select
             className="border rounded p-2"
@@ -228,10 +225,23 @@ export default function SeatManagement() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
-          <Button variant="outline" onClick={() => { setSearchSeat(""); setSearchStatus(""); }}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSearchSeat("");
+              setSearchStatus("");
+              setSearchTrainNumber("");
+            }}
+          >
             Clear filters
           </Button>
-          <Button variant="default" onClick={() => { setShowSeatForm(true); setEditSeat(null); }}>
+          <Button
+            variant="default"
+            onClick={() => {
+              setShowSeatForm(true);
+              setEditSeat(null);
+            }}
+          >
             + Add Seat
           </Button>
           <Input
@@ -240,7 +250,7 @@ export default function SeatManagement() {
             className="w-24"
             value={initCount}
             min={1}
-            onChange={e => setInitCount(e.target.value)}
+            onChange={(e) => setInitCount(e.target.value)}
           />
           <Button variant="secondary" onClick={handleInitialize}>
             Initialize All Seats
@@ -249,7 +259,10 @@ export default function SeatManagement() {
       )}
 
       {showSeatForm && (
-        <form onSubmit={handleSeatSubmit} className="mb-4 p-4 border rounded space-y-2 bg-gray-50">
+        <form
+          onSubmit={handleSeatSubmit}
+          className="mb-4 p-4 border rounded space-y-2 bg-gray-50"
+        >
           <h3 className="font-semibold">{editSeat ? "Edit Seat" : "Add Seat"}</h3>
           <div className="flex flex-wrap gap-2 items-center">
             <Label>Seat Number</Label>
@@ -260,7 +273,6 @@ export default function SeatManagement() {
               required
               className="max-w-[7rem]"
               disabled={Boolean(editSeat)}
-              // Can only change seat number on "add"
             />
             <Label>Status</Label>
             <select
@@ -269,8 +281,10 @@ export default function SeatManagement() {
               onChange={handleSeatFormChange}
               className="border p-2 rounded"
             >
-              {STATUS_OPTIONS.map(s => (
-                <option key={s} value={s}>{s}</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
             </select>
             <Button type="submit" variant="default">
@@ -289,6 +303,7 @@ export default function SeatManagement() {
             <thead>
               <tr className="bg-gray-100">
                 <th className="p-2 border-b">Seat Number</th>
+                <th className="p-2 border-b">Train #</th>
                 <th className="p-2 border-b">Status</th>
                 <th className="p-2 border-b">Actions</th>
               </tr>
@@ -296,47 +311,55 @@ export default function SeatManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={3} className="py-8 text-center">Loading...</td>
+                  <td colSpan={4} className="py-8 text-center">
+                    Loading...
+                  </td>
                 </tr>
               ) : filteredSeats.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="py-8 text-center text-gray-400">
+                  <td colSpan={4} className="py-8 text-center text-gray-400">
                     No seats found for this train & date.
                   </td>
                 </tr>
               ) : (
-                filteredSeats.map((seat) => (
-                  <tr key={seat.id}>
-                    <td className="border-b p-2">{seat.seatNumber}</td>
-                    <td className="border-b p-2">
-                      <select
-                        value={seat.status}
-                        onChange={(e) => handleStatusChange(seat, e.target.value)}
-                        className="border p-1 rounded"
-                      >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="border-b p-2 flex gap-1">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleEdit(seat)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDelete(seat)}
-                      >
-                        Delete
-                      </Button>
-                    </td>
-                  </tr>
-                ))
+                filteredSeats.map((seat) => {
+                  const train = trains.find((t) => t.id === seat.trainId);
+                  return (
+                    <tr key={seat.id}>
+                      <td className="border-b p-2">{seat.seatNumber}</td>
+                      <td className="border-b p-2">{train?.trainNumber ?? "—"}</td>
+                      <td className="border-b p-2">
+                        <select
+                          value={seat.status}
+                          onChange={(e) => handleStatusChange(seat, e.target.value)}
+                          className="border p-1 rounded"
+                        >
+                          {STATUS_OPTIONS.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="border-b p-2 flex gap-1">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleEdit(seat)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(seat)}
+                        >
+                          Delete
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

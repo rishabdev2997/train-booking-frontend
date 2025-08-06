@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import API from '@/lib/api';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { useState, useEffect, ChangeEvent, FormEvent } from "react";
+import API from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 type Booking = {
   bookingId?: string;
@@ -25,74 +25,108 @@ type Booking = {
 };
 
 type Train = {
-  id: string
-  trainNumber: string
-  name: string
-  source: string
-  destination: string
-  departureDate?: string
-  departureTime?: string
-  arrivalTime?: string
-  // ...any extra
+  id: string;
+  trainNumber: string;
+  name: string;
+  source: string;
+  destination: string;
+  departureDate?: string;
+  departureTime?: string;
+  arrivalTime?: string;
 };
 
+// Format ISO date string as dd/mm/yyyy
 function formatDate(isoDate?: string) {
-  if (!isoDate) return '-';
+  if (!isoDate) return "-";
   const [year, month, day] = isoDate.split("T")[0].split("-");
   return `${day}/${month}/${year}`;
+}
+
+interface BookingManagementProps {
+  role?: "ADMIN" | "USER";
+  userId?: string;
+  onBookingCancelled?: () => void;
+}
+
+interface BookingRequestDTO {
+  trainId: string;
+  userId?: string;
+  departureDate: string; // yyyy-MM-dd
+  seatNumber: string;
+  // other fields as required by backend
 }
 
 export default function BookingManagement({
   role = "ADMIN",
   userId: userIdProp,
   onBookingCancelled,
-}: {
-  role?: "ADMIN" | "USER";
-  userId?: string;
-  onBookingCancelled?: () => void;
-}) {
+}: BookingManagementProps) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [trains, setTrains] = useState<Train[]>([]);
-  const [trainsById, setTrainsById] = useState<{ [id: string]: Train }>({});
+  const [trainsById, setTrainsById] = useState<Record<string, Train>>({});
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [userId, setUserId] = useState(userIdProp || "");
 
-  // Fetch trains for lookup
+  // Booking creation form state
+  const [creatingBooking, setCreatingBooking] = useState(false);
+  const [newBooking, setNewBooking] = useState<BookingRequestDTO>({
+    trainId: "",
+    departureDate: "",
+    seatNumber: "",
+    userId: userId || undefined,
+  });
+
+  // Fetch trains on mount
   useEffect(() => {
-    API.get("/trains").then(res => {
-      setTrains(res.data);
-      setTrainsById(Object.fromEntries(res.data.map((t: Train) => [t.id, t])));
-    });
+    API.get("/api/v1/trains")
+      .then((res) => {
+        setTrains(res.data);
+        setTrainsById(Object.fromEntries(res.data.map((t: Train) => [t.id, t])));
+      })
+      .catch(() => toast.error("Failed to load train list"));
   }, []);
 
-  // Fetch userId from /auth/me if not passed and role is USER
+  // Fetch current user id if role is USER and not passed as prop
   useEffect(() => {
     if (role === "USER" && !userId) {
-      API.get("/auth/me")
-        .then(res => setUserId(res.data.id))
+      API.get("/api/v1/auth/me")
+        .then((res) => setUserId(res.data.id))
         .catch(() => setUserId(""));
     }
   }, [role, userId]);
 
-  // Fetch bookings
-  const fetchBookings = async () => {
+  // Fetch bookings (optionally enriched) depending on role
+  const fetchBookings = async (enriched = false) => {
     setLoading(true);
     try {
       let res;
       if (role === "USER") {
-        if (!userId) return setLoading(false);
-        res = await API.get(`/bookings/user/${userId}`);
+        if (!userId) {
+          setLoading(false);
+          return;
+        }
+        if (enriched) {
+          res = await API.get(`/api/v1/bookings/user/${userId}/enriched`);
+        } else {
+          res = await API.get(`/api/v1/bookings/user/${userId}`);
+        }
       } else {
-        res = await API.get('/bookings');
+        res = await API.get("/api/v1/bookings");
       }
-      setBookings(res.data.map((b: Booking) => ({
-        ...b,
-        date: b.date || b.journeyDate,
-        seats: b.seats ?? b.seatNumbers ?? (b.seatNumber ? [b.seatNumber] : []),
-      })));
-    } catch (err) {
-      toast.error('Failed to fetch bookings');
+
+      setBookings(
+        res.data.map((b: Booking) => ({
+          ...b,
+          date: b.date || b.journeyDate,
+          seats:
+            b.seats ??
+            b.seatNumbers ??
+            (b.seatNumber ? [b.seatNumber] : []),
+        }))
+      );
+    } catch {
+      toast.error("Failed to fetch bookings");
       setBookings([]);
     } finally {
       setLoading(false);
@@ -101,44 +135,80 @@ export default function BookingManagement({
 
   useEffect(() => {
     if ((role === "USER" && userId) || role === "ADMIN") fetchBookings();
-    // eslint-disable-next-line
   }, [role, userId]);
 
+  // Cancel booking
   const handleCancel = async (bookingId: string) => {
-    if (!window.confirm('Cancel this booking?')) return;
+    if (!window.confirm("Cancel this booking?")) return;
     try {
-      await API.post(`/bookings/${bookingId}/cancel`);
-      setBookings(current =>
-        current.map(b =>
-          (b.bookingId === bookingId || b.id === bookingId)
-            ? { ...b, status: 'CANCELLED' } : b
+      await API.post(`/api/v1/bookings/${bookingId}/cancel`);
+      setBookings((current) =>
+        current.map((b) =>
+          b.bookingId === bookingId || b.id === bookingId
+            ? { ...b, status: "CANCELLED" }
+            : b
         )
       );
-      toast.success('Booking cancelled!');
+      toast.success("Booking cancelled!");
       if (onBookingCancelled) onBookingCancelled();
     } catch {
-      toast.error('Cancel failed');
+      toast.error("Cancel failed");
     }
   };
 
-  const filteredBookings = bookings.filter(b => {
-    // Use info from train object in search, too!
+  // Booking creation handlers
+  const handleNewBookingChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    setNewBooking((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCreateBooking = async (e: FormEvent) => {
+    e.preventDefault();
+    if (
+      !newBooking.trainId ||
+      !newBooking.departureDate ||
+      !newBooking.seatNumber
+    ) {
+      toast.error("Please fill all booking details");
+      return;
+    }
+    try {
+      await API.post("/api/v1/bookings", newBooking);
+      toast.success("Booking created!");
+      setCreatingBooking(false);
+      setNewBooking({
+        trainId: "",
+        departureDate: "",
+        seatNumber: "",
+        userId: userId || undefined,
+      });
+      fetchBookings();
+    } catch {
+      toast.error("Booking creation failed");
+    }
+  };
+
+  // Filter bookings for display
+  const filteredBookings = bookings.filter((b) => {
     const train = trainsById[b.trainId || ""];
     const trainSearch = train
       ? `${train.trainNumber} ${train.name} ${train.source} ${train.destination}`
       : "";
-    const searchString = role === "ADMIN"
-      ? `
+    const searchString =
+      role === "ADMIN"
+        ? `
         ${b.userFullName || ""} ${b.userEmail || ""} ${b.username || ""}
         ${trainSearch}
         ${b.status || ""} ${b.date || ""}
         ${(b.seats || []).join(" ")}
-      `.toLowerCase()
-      : `
+        `.toLowerCase()
+        : `
         ${trainSearch}
         ${b.status || ""} ${b.date || ""}
         ${(b.seats || []).join(" ")}
-      `.toLowerCase();
+        `.toLowerCase();
     return searchString.includes(search.trim().toLowerCase());
   });
 
@@ -147,6 +217,8 @@ export default function BookingManagement({
       <h2 className="text-xl font-semibold mb-2">
         Booking Management{role === "USER" ? " (My Bookings)" : ""}
       </h2>
+
+      {/* Search and filters */}
       <div className="mb-4 flex items-center gap-2 max-w-md">
         <Input
           placeholder={
@@ -155,12 +227,103 @@ export default function BookingManagement({
               : "Search (train, status, date)"
           }
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           aria-label="Search Bookings"
           disabled={role === "USER" && bookings.length === 0}
         />
-        <Button variant="outline" onClick={() => setSearch('')}>Clear</Button>
+        <Button variant="outline" onClick={() => setSearch("")}>
+          Clear
+        </Button>
+        {/* Enriched bookings toggle for USER */}
+        {role === "USER" && (
+          <Button
+            variant="secondary"
+            onClick={() => fetchBookings(true)}
+            className="ml-auto"
+          >
+            Load Enriched Bookings
+          </Button>
+        )}
       </div>
+
+      {/* New booking form toggle */}
+      {role !== "USER" || (role === "USER" && userId) ? (
+        <>
+          {!creatingBooking && (
+            <Button
+              variant="default"
+              onClick={() => setCreatingBooking(true)}
+              className="mb-4"
+            >
+              + New Booking
+            </Button>
+          )}
+          {creatingBooking && (
+            <form
+              onSubmit={handleCreateBooking}
+              className="mb-6 p-4 border rounded bg-gray-50 max-w-md space-y-3"
+            >
+              <h3 className="font-semibold text-lg mb-2">Create New Booking</h3>
+
+              <label className="block">
+                <span className="text-sm font-medium">Select Train</span>
+                <select
+                  name="trainId"
+                  value={newBooking.trainId}
+                  onChange={handleNewBookingChange}
+                  required
+                  className="w-full mt-1 p-2 border rounded"
+                >
+                  <option value="">Select train</option>
+                  {trains.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trainNumber} {t.source} → {t.destination}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium">Journey Date</span>
+                <Input
+                  type="date"
+                  name="departureDate"
+                  value={newBooking.departureDate}
+                  onChange={handleNewBookingChange}
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium">Seat Number</span>
+                <Input
+                  type="text"
+                  name="seatNumber"
+                  value={newBooking.seatNumber}
+                  onChange={handleNewBookingChange}
+                  placeholder="e.g., 1A"
+                  required
+                />
+              </label>
+
+              <div className="flex gap-2">
+                <Button type="submit" variant="default" className="flex-grow">
+                  Create Booking
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCreatingBooking(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
+        </>
+      ) : null}
+
+      {/* Bookings table */}
       {loading ? (
         <div>Loading bookings...</div>
       ) : (
@@ -179,57 +342,71 @@ export default function BookingManagement({
               </tr>
             </thead>
             <tbody>
-              {filteredBookings.length === 0 && (
+              {filteredBookings.length === 0 ? (
                 <tr>
-                  <td className="py-8 text-center text-gray-400" colSpan={role === "ADMIN" ? 6 : 5}>
+                  <td
+                    className="py-8 text-center text-gray-400"
+                    colSpan={role === "ADMIN" ? 6 : 5}
+                  >
                     No bookings found.
                   </td>
                 </tr>
-              )}
-              {filteredBookings.map(b => {
-                const train = trainsById[b.trainId || ""];
-                return (
-                  <tr key={b.bookingId || b.id}>
-                    {role === "ADMIN" && (
-                      <td className="border-b p-2">
-                        {b.userFullName || b.userEmail || b.username || b.userId || 'N/A'}
-                      </td>
-                    )}
-                    <td className="border-b p-2">
-                      {/* Show [train no] [src] → [dest] */}
-                      {train
-                        ? `${train.trainNumber} ${train.source} → ${train.destination}`
-                        : b.trainNumber || b.trainName || b.trainId || "N/A"
-                      }
-                    </td>
-                    <td className="border-b p-2">{formatDate(b.date)}</td>
-                    <td className="border-b p-2">
-                      {b.seats && b.seats.length > 0 ? b.seats.join(', ') : '-'}
-                    </td>
-                    <td
-                      className={`border-b p-2 ${
-                        b.status === 'CANCELLED' ? 'text-red-600 font-semibold' : ''
-                      }`}
-                    >
-                      {b.status}
-                    </td>
-                    <td className="border-b p-2">
-                      {b.status !== 'CANCELLED' && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleCancel(b.bookingId || b.id)}
-                          disabled={!!(role === "USER" && b.userId && userId && b.userId !== userId)}
-                        >
-                          Cancel
-                        </Button>
-                        
+              ) : (
+                filteredBookings.map((b) => {
+                  const train = trainsById[b.trainId || ""];
+                  const isDisabledCancel: boolean =
+                        role === "USER" && !!b.userId && !!userId && b.userId !== userId;
+                  return (
+                    <tr key={b.bookingId || b.id}>
+                      {role === "ADMIN" && (
+                        <td className="border-b p-2">
+                          {b.userFullName ||
+                            b.userEmail ||
+                            b.username ||
+                            b.userId ||
+                            "N/A"}
+                        </td>
                       )}
-                      
-                    </td>
-                  </tr>
-                );
-              })}
+
+                      <td className="border-b p-2">
+                        {train
+                          ? `${train.trainNumber} ${train.source} → ${train.destination}`
+                          : b.trainNumber || b.trainName || b.trainId || "N/A"}
+                      </td>
+
+                      <td className="border-b p-2">{formatDate(b.date)}</td>
+                      <td className="border-b p-2">
+                        {b.seats && b.seats.length > 0 ? b.seats.join(", ") : "-"}
+                      </td>
+
+                      <td
+                        className={`border-b p-2 ${
+                          b.status === "CANCELLED" ? "text-red-600 font-semibold" : ""
+                        }`}
+                      >
+                        {b.status}
+                      </td>
+
+                      <td className="border-b p-2">
+                        {b.status !== "CANCELLED" && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleCancel(b.bookingId || b.id)}
+                            aria-disabled={isDisabledCancel}
+                            className={isDisabledCancel ? "opacity-50 pointer-events-none" : ""}
+                            title={isDisabledCancel ? "You cannot cancel this booking" : "Cancel Booking"}
+                          >
+                            Cancel
+                          </Button>
+
+
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
