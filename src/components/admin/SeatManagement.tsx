@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, ChangeEvent, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import API from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ type Seat = {
   id: string;
   trainId: string;
   seatNumber: string;
-  date: string; // corresponds to departureDate
+  date: string;
   status: string;
 };
 
@@ -35,7 +35,6 @@ export default function SeatManagement() {
   const [searchSeat, setSearchSeat] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchTrainNumber, setSearchTrainNumber] = useState("");
-
   const [showSeatForm, setShowSeatForm] = useState(false);
   const [editSeat, setEditSeat] = useState<Seat | null>(null);
 
@@ -44,29 +43,15 @@ export default function SeatManagement() {
     status: "AVAILABLE",
   });
 
-  const [initCount, setInitCount] = useState("");
-
-  // Load trains on mount
   useEffect(() => {
-    API.get("/trains")
-      .then((res) => setTrains(res.data))
-      .catch(() => toast.error("Failed to load train list"));
+    API.get("/trains").then((res) => setTrains(res.data));
   }, []);
 
-  // Keep train number filter in sync with selected train
-  useEffect(() => {
-    const selectedTrain = trains.find((t) => t.id === trainId);
-    setSearchTrainNumber(selectedTrain?.trainNumber || "");
-  }, [trainId, trains]);
-
-  // Fetch seats for selected train/date
   const fetchSeats = async () => {
     if (!trainId || !date) return;
     setLoading(true);
     try {
-      const res = await API.get(
-        `/seats?trainId=${trainId}&departureDate=${date}`
-      );
+      const res = await API.get(`/seats?trainId=${trainId}&departureDate=${date}`);
       setSeats(res.data);
     } catch {
       toast.error("Failed to fetch seats");
@@ -80,43 +65,30 @@ export default function SeatManagement() {
     fetchSeats();
   }, [trainId, date]);
 
-  // Filter seats for search and status
   const filteredSeats = seats.filter((s) => {
     const train = trains.find((t) => t.id === s.trainId);
-
-    const matchesNumber = searchSeat
-      ? s.seatNumber.toLowerCase().includes(searchSeat.toLowerCase())
-      : true;
+    const matchesNumber = searchSeat ? s.seatNumber.includes(searchSeat) : true;
     const matchesStatus = searchStatus ? s.status === searchStatus : true;
-    const matchesTrainNumber = searchTrainNumber
-      ? train?.trainNumber.toLowerCase().includes(searchTrainNumber.toLowerCase())
-      : true;
+    const matchesTrainNumber = searchTrainNumber ? train?.trainNumber.includes(searchTrainNumber) : true;
     return matchesNumber && matchesStatus && matchesTrainNumber;
   });
 
-  // Reset form & editing state
   const resetForm = () => {
     setForm({ seatNumber: "", status: "AVAILABLE" });
     setEditSeat(null);
     setShowSeatForm(false);
   };
 
-  // Handle form input changes
-  const handleSeatFormChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
+  const handleSeatFormChange = (e: any) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
-  // Add or update seat submission
-  const handleSeatSubmit = async (e: FormEvent) => {
+  const handleSeatSubmit = async (e: any) => {
     e.preventDefault();
-
     if (!trainId || !date || !form.seatNumber) {
       toast.error("Choose train, date, and seat number");
       return;
     }
-
     try {
       if (editSeat) {
         await API.post(`/seats/update`, {
@@ -127,7 +99,7 @@ export default function SeatManagement() {
         });
         toast.success("Seat status updated");
       } else {
-        await API.post(`/seats`, {
+        await API.post("/seats", {
           trainId,
           departureDate: date,
           seatNumber: form.seatNumber,
@@ -142,21 +114,16 @@ export default function SeatManagement() {
     }
   };
 
-  // Prepare form for editing
   const handleEdit = (seat: Seat) => {
     setEditSeat(seat);
     setForm({ seatNumber: seat.seatNumber, status: seat.status });
     setShowSeatForm(true);
   };
 
-  // Delete seat
   const handleDelete = async (seat: Seat) => {
     if (!window.confirm("Delete this seat?")) return;
-
     try {
-      await API.delete(
-        `/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`
-      );
+      await API.delete(`/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`);
       toast.success("Seat deleted");
       fetchSeats();
     } catch {
@@ -164,10 +131,8 @@ export default function SeatManagement() {
     }
   };
 
-  // Change seat status and update UI optimistically
   const handleStatusChange = async (seat: Seat, newStatus: string) => {
     if (seat.status === newStatus) return;
-
     try {
       await API.post(`/seats/update`, {
         trainId: seat.trainId,
@@ -184,22 +149,15 @@ export default function SeatManagement() {
     }
   };
 
-  // Bulk initialize seats
+  const [initCount, setInitCount] = useState("");
   const handleInitialize = async () => {
     if (!trainId || !date || !initCount) {
       toast.error("Train, date, and seat count required");
       return;
     }
-
-    const totalSeats = Number(initCount);
-    if (!totalSeats || totalSeats < 1) {
-      toast.error("Seat count must be a positive number");
-      return;
-    }
-
     try {
       await API.post(
-        `/seats/initialize?trainId=${trainId}&departureDate=${date}&totalSeats=${totalSeats}`
+        `/seats/initialize?trainId=${trainId}&departureDate=${date}&totalSeats=${initCount}`
       );
       toast.success("Seats initialized");
       setInitCount("");
@@ -212,38 +170,32 @@ export default function SeatManagement() {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-2">Seat Management</h2>
-
-      {/* Train and Date selectors */}
       <div className="flex flex-col md:flex-row gap-2 mb-2">
         <div>
-          <Label>Train Number</Label>
-          <Input
-            placeholder="Enter train number"
-            value={searchTrainNumber}
-            onChange={(e) => {
-              const val = e.target.value;
-              setSearchTrainNumber(val);
-              const matchedTrain = trains.find((t) =>
-                t.trainNumber.toLowerCase().includes(val.toLowerCase())
-              );
-              setTrainId(matchedTrain?.id || "");
-            }}
-            disabled={loading}
-          />
+          <Label>Train</Label>
+          <select
+            className="border rounded p-2"
+            value={trainId}
+            onChange={(e) => setTrainId(e.target.value)}
+          >
+            <option value="">Select train</option>
+            {trains.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.trainNumber} {t.source} → {t.destination}
+              </option>
+            ))}
+          </select>
         </div>
-
         <div>
           <Label>Date</Label>
           <Input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            disabled={loading}
           />
         </div>
       </div>
 
-      {/* Filters and Actions */}
       {trainId && date && (
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <Input
@@ -252,7 +204,12 @@ export default function SeatManagement() {
             onChange={(e) => setSearchSeat(e.target.value)}
             placeholder="Seat #"
           />
-
+          <Input
+            className="max-w-[8rem]"
+            value={searchTrainNumber}
+            onChange={(e) => setSearchTrainNumber(e.target.value)}
+            placeholder="Train #"
+          />
           <select
             className="border rounded p-2"
             value={searchStatus}
@@ -260,22 +217,19 @@ export default function SeatManagement() {
           >
             <option value="">All Status</option>
             {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
-
           <Button
             variant="outline"
             onClick={() => {
               setSearchSeat("");
               setSearchStatus("");
+              setSearchTrainNumber("");
             }}
           >
             Clear filters
           </Button>
-
           <Button
             variant="default"
             onClick={() => {
@@ -285,7 +239,6 @@ export default function SeatManagement() {
           >
             + Add Seat
           </Button>
-
           <Input
             type="number"
             placeholder="Bulk # seats"
@@ -294,21 +247,18 @@ export default function SeatManagement() {
             min={1}
             onChange={(e) => setInitCount(e.target.value)}
           />
-
           <Button variant="secondary" onClick={handleInitialize}>
             Initialize All Seats
           </Button>
         </div>
       )}
 
-      {/* Add/Edit seat form */}
       {showSeatForm && (
         <form
           onSubmit={handleSeatSubmit}
           className="mb-4 p-4 border rounded space-y-2 bg-gray-50"
         >
           <h3 className="font-semibold">{editSeat ? "Edit Seat" : "Add Seat"}</h3>
-
           <div className="flex flex-wrap gap-2 items-center">
             <Label>Seat Number</Label>
             <Input
@@ -319,7 +269,6 @@ export default function SeatManagement() {
               className="max-w-[7rem]"
               disabled={Boolean(editSeat)}
             />
-
             <Label>Status</Label>
             <select
               name="status"
@@ -333,11 +282,9 @@ export default function SeatManagement() {
                 </option>
               ))}
             </select>
-
             <Button type="submit" variant="default">
               {editSeat ? "Save" : "Add"}
             </Button>
-
             <Button type="button" variant="outline" onClick={resetForm}>
               Cancel
             </Button>
@@ -345,7 +292,6 @@ export default function SeatManagement() {
         </form>
       )}
 
-      {/* Seats table */}
       {trainId && date && (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border rounded">
