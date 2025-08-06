@@ -47,7 +47,7 @@ export default function SeatManagement() {
 
   // Load trains on mount
   useEffect(() => {
-    API.get("/trains") // No /api/v1 prefix, baseURL already has it
+    API.get("/trains") // baseURL already includes /api/v1
       .then((res) => setTrains(res.data))
       .catch(() => toast.error("Failed to load train list"));
   }, []);
@@ -58,7 +58,7 @@ export default function SeatManagement() {
     setLoading(true);
     try {
       const res = await API.get(
-        `/seats?trainId=${trainId}&departureDate=${date}` // no duplicate /api/v1
+        `/seats?trainId=${trainId}&departureDate=${date}`
       );
       setSeats(res.data);
     } catch {
@@ -74,7 +74,7 @@ export default function SeatManagement() {
     fetchSeats();
   }, [trainId, date]);
 
-  // Filter seats based on search fields
+  // Filter seats based on search fields including Train Number
   const filteredSeats = seats.filter((s) => {
     const train = trains.find((t) => t.id === s.trainId);
 
@@ -101,7 +101,7 @@ export default function SeatManagement() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
-  // Submit form for add or update seat
+  // Submit form to add or update a seat
   const handleSeatSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -112,7 +112,6 @@ export default function SeatManagement() {
 
     try {
       if (editSeat) {
-        // Update existing seat status
         await API.post(`/seats/update`, {
           trainId,
           departureDate: date,
@@ -121,7 +120,6 @@ export default function SeatManagement() {
         });
         toast.success("Seat status updated");
       } else {
-        // Create new seat
         await API.post(`/seats`, {
           trainId,
           departureDate: date,
@@ -130,7 +128,6 @@ export default function SeatManagement() {
         });
         toast.success("Seat added");
       }
-
       resetForm();
       fetchSeats();
     } catch {
@@ -138,14 +135,14 @@ export default function SeatManagement() {
     }
   };
 
-  // Prepare form for seat editing
+  // Prepare form for editing selected seat
   const handleEdit = (seat: Seat) => {
     setEditSeat(seat);
     setForm({ seatNumber: seat.seatNumber, status: seat.status });
     setShowSeatForm(true);
   };
 
-  // Delete seat
+  // Delete seat API call
   const handleDelete = async (seat: Seat) => {
     if (!window.confirm("Delete this seat?")) return;
 
@@ -160,19 +157,17 @@ export default function SeatManagement() {
     }
   };
 
-  // Change seat status (e.g. from AVAILABLE to BOOKED)
+  // Change seat status API call with optimistic UI update
   const handleStatusChange = async (seat: Seat, newStatus: string) => {
     if (seat.status === newStatus) return;
 
     try {
       await API.post(`/seats/update`, {
         trainId: seat.trainId,
-        departureDate: seat.date,
+        departureDate: date,
         seatNumber: seat.seatNumber,
         status: newStatus,
       });
-
-      // Optimistically update UI
       setSeats((seats) =>
         seats.map((s) => (s.id === seat.id ? { ...s, status: newStatus } : s))
       );
@@ -182,7 +177,7 @@ export default function SeatManagement() {
     }
   };
 
-  // Bulk initialize seats for train on date
+  // Bulk initialize seats for train and date
   const handleInitialize = async () => {
     if (!trainId || !date || !initCount) {
       toast.error("Train, date, and seat count required");
@@ -211,7 +206,7 @@ export default function SeatManagement() {
     <div>
       <h2 className="text-xl font-semibold mb-2">Seat Management</h2>
 
-      {/* Select train and date */}
+      {/* Train & Date selection */}
       <div className="flex flex-col md:flex-row gap-2 mb-2">
         <div>
           <Label>Train</Label>
@@ -241,7 +236,7 @@ export default function SeatManagement() {
         </div>
       </div>
 
-      {/* Filters & actions */}
+      {/* Search Filters */}
       {trainId && date && (
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <Input
@@ -305,7 +300,7 @@ export default function SeatManagement() {
         </div>
       )}
 
-      {/* Seat add/edit form */}
+      {/* Add/Edit Seat Form */}
       {showSeatForm && (
         <form
           onSubmit={handleSeatSubmit}
@@ -349,7 +344,7 @@ export default function SeatManagement() {
         </form>
       )}
 
-      {/* Seats Table */}
+      {/* Seats List Table */}
       {trainId && date && (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border rounded">
