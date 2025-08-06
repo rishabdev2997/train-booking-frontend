@@ -27,7 +27,12 @@ type TrainRun = {
 const STATUS_OPTIONS = ["AVAILABLE", "BOOKED"];
 
 export default function SeatManagement() {
-  const [searchTrainNumber, setSearchTrainNumber] = useState("");
+  // Search by these fields now
+  const [searchSource, setSearchSource] = useState("");
+  const [searchDestination, setSearchDestination] = useState("");
+  const [searchDate, setSearchDate] = useState("");
+
+  // All matching runs after searching
   const [trainRuns, setTrainRuns] = useState<TrainRun[]>([]);
   const [selectedTrainId, setSelectedTrainId] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -46,50 +51,43 @@ export default function SeatManagement() {
     status: "AVAILABLE",
   });
 
-  // Effect: Fetch train runs matching trainNumber
-  useEffect(() => {
-    if (!searchTrainNumber.trim()) {
+  // Search all trains with source, destination, date
+  const handleSearch = async () => {
+    if (!searchSource.trim() || !searchDestination.trim() || !searchDate.trim()) {
+      toast.error("Please enter source, destination, and date.");
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        source: searchSource.trim(),
+        destination: searchDestination.trim(),
+        departureDate: searchDate.trim(),
+      }).toString();
+      const res = await API.get(`/trains/search?${query}`);
+      const runs = res.data.map((t: any) => ({
+        id: t.id,
+        trainNumber: t.trainNumber,
+        name: t.name,
+        source: t.source,
+        destination: t.destination,
+        departureDate: t.departureDate,
+      }));
+      setTrainRuns(runs);
+      setSeats([]);
+      setSelectedTrainId("");
+      setSelectedDate("");
+      resetForm();
+    } catch {
+      toast.error("Failed to fetch trains for those criteria");
       setTrainRuns([]);
       setSelectedTrainId("");
       setSelectedDate("");
       setSeats([]);
       resetForm();
-      return;
     }
+  };
 
-    API.get(`/trains/search?trainNumber=${encodeURIComponent(searchTrainNumber.trim())}`)
-      .then((res) => {
-        const runs = res.data.map((t: any) => ({
-          id: t.id,
-          trainNumber: t.trainNumber,
-          name: t.name,
-          source: t.source,
-          destination: t.destination,
-          departureDate: t.departureDate,
-        }));
-        setTrainRuns(runs);
-
-        if (runs.length === 1) {
-          setSelectedTrainId(runs[0].id);
-          setSelectedDate(runs[0].departureDate);
-        } else {
-          setSelectedTrainId("");
-          setSelectedDate("");
-          setSeats([]);
-        }
-        resetForm();
-      })
-      .catch(() => {
-        toast.error("Failed to fetch trains by train number");
-        setTrainRuns([]);
-        setSelectedTrainId("");
-        setSelectedDate("");
-        setSeats([]);
-        resetForm();
-      });
-  }, [searchTrainNumber]);
-
-  // Effect: Fetch seats for selected run + date
+  // Fetch seats when selectedTrainId or selectedDate changes
   useEffect(() => {
     if (!selectedTrainId || !selectedDate) {
       setSeats([]);
@@ -105,7 +103,7 @@ export default function SeatManagement() {
       .finally(() => setLoadingSeats(false));
   }, [selectedTrainId, selectedDate]);
 
-  // Filter seats locally for seatNumber and status filters
+  // Local seat filters
   const filteredSeats = seats.filter((s) => {
     const matchesNumber = searchSeatNumber
       ? s.seatNumber.toLowerCase().includes(searchSeatNumber.toLowerCase())
@@ -196,44 +194,81 @@ export default function SeatManagement() {
     }
   };
 
-  // Bulk initialize seats state & handler omitted here - keep as you have
+  // Bulk seats code can be left as before
 
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4">Seat Management</h2>
 
-      <div className="mb-4">
-        <Label>Search Train Number</Label>
-        <Input
-          placeholder="Enter Train Number (e.g., 13039)"
-          value={searchTrainNumber}
-          onChange={(e) => setSearchTrainNumber(e.target.value)}
-          className="mb-3"
-          autoComplete="off"
-        />
-
-        <Label>Available Train Runs</Label>
-        <select
-          className="w-full rounded border p-2 mb-4"
-          value={selectedTrainId}
-          onChange={(e) => {
-            const trainId = e.target.value;
-            setSelectedTrainId(trainId);
-            const run = trainRuns.find((r) => r.id === trainId);
-            setSelectedDate(run?.departureDate || "");
+      {/* Search panel for source, destination, date */}
+      <div className="mb-4 flex flex-wrap gap-3 items-end">
+        <div>
+          <Label>Source</Label>
+          <Input
+            placeholder="Source"
+            value={searchSource}
+            onChange={(e) => setSearchSource(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div>
+          <Label>Destination</Label>
+          <Input
+            placeholder="Destination"
+            value={searchDestination}
+            onChange={(e) => setSearchDestination(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div>
+          <Label>Departure Date</Label>
+          <Input
+            type="date"
+            value={searchDate}
+            onChange={(e) => setSearchDate(e.target.value)}
+          />
+        </div>
+        <Button variant="default" onClick={handleSearch}>
+          Search Trains
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSearchSource("");
+            setSearchDestination("");
+            setSearchDate("");
+            setTrainRuns([]);
+            setSeats([]);
+            setSelectedTrainId("");
+            setSelectedDate("");
             resetForm();
           }}
-          disabled={trainRuns.length === 0}
-          aria-label="Select Train Run"
         >
-          <option value="">-- Select Train & Date --</option>
-          {trainRuns.map((run) => (
-            <option key={run.id} value={run.id}>
-              {run.trainNumber} • {run.departureDate} • {run.source} → {run.destination}
-            </option>
-          ))}
-        </select>
+          Clear
+        </Button>
       </div>
+
+      <Label>Available Train Runs</Label>
+      <select
+        className="w-full rounded border p-2 mb-4"
+        value={selectedTrainId}
+        onChange={(e) => {
+          const trainId = e.target.value;
+          setSelectedTrainId(trainId);
+          const run = trainRuns.find((r) => r.id === trainId);
+          setSelectedDate(run?.departureDate || "");
+          resetForm();
+        }}
+        disabled={trainRuns.length === 0}
+        aria-label="Select Train Run"
+      >
+        <option value="">-- Select Train & Date --</option>
+        {trainRuns.map((run) => (
+          <option key={run.id} value={run.id}>
+            {run.trainNumber} • {run.departureDate} • {run.source} → {run.destination}
+          </option>
+        ))}
+      </select>
 
       {selectedTrainId && selectedDate && (
         <>
@@ -279,7 +314,7 @@ export default function SeatManagement() {
               + Add Seat
             </Button>
 
-            {/* Place Bulk Initialize seats input/button here, if you have */}
+            {/* Bulk seat initialization etc, as before */}
           </div>
 
           {showSeatForm && (
