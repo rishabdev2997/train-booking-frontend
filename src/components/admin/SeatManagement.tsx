@@ -11,7 +11,7 @@ type Seat = {
   id: string;
   trainId: string;
   seatNumber: string;
-  date: string; // corresponds to departureDate
+  date: string; // departureDate
   status: string;
 };
 
@@ -35,19 +35,18 @@ export default function SeatManagement() {
   const [seats, setSeats] = useState<Seat[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Seat search filters
   const [searchSeat, setSearchSeat] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
 
-  // Seat form state
   const [showSeatForm, setShowSeatForm] = useState(false);
   const [editSeat, setEditSeat] = useState<Seat | null>(null);
+
   const [form, setForm] = useState({
     seatNumber: "",
     status: "AVAILABLE",
   });
 
-  // Load trains filtered by train number when searchTrainNumber changes
+  // Fetch train runs when searchTrainNumber changes
   useEffect(() => {
     if (!searchTrainNumber.trim()) {
       setTrainRuns([]);
@@ -56,7 +55,7 @@ export default function SeatManagement() {
       return;
     }
 
-    API.get(`/trains?trainNumber=${encodeURIComponent(searchTrainNumber.trim())}`)
+    API.get(`/trains/search?trainNumber=${encodeURIComponent(searchTrainNumber.trim())}`)
       .then((res) => {
         const runs = res.data.map((t: any) => ({
           id: t.id,
@@ -68,7 +67,6 @@ export default function SeatManagement() {
         }));
         setTrainRuns(runs);
 
-        // Auto-select if only 1 run found
         if (runs.length === 1) {
           setSelectedTrainId(runs[0].id);
           setSelectedDate(runs[0].departureDate);
@@ -90,13 +88,12 @@ export default function SeatManagement() {
       });
   }, [searchTrainNumber]);
 
-  // Fetch seats whenever selectedTrainId or selectedDate changes
+  // Fetch seats when selectedTrainId or selectedDate changes
   useEffect(() => {
     if (!selectedTrainId || !selectedDate) {
       setSeats([]);
       return;
     }
-
     setLoading(true);
     API.get(`/seats?trainId=${selectedTrainId}&departureDate=${selectedDate}`)
       .then((res) => setSeats(res.data))
@@ -124,11 +121,11 @@ export default function SeatManagement() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
-  // Add or update seat
   const handleSeatSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
     if (!selectedTrainId || !selectedDate || !form.seatNumber) {
-      toast.error("Choose train, date, and seat number");
+      toast.error("Please select train run and enter seat number");
       return;
     }
     try {
@@ -150,7 +147,7 @@ export default function SeatManagement() {
         toast.success("Seat added");
       }
       resetForm();
-      // Refresh seats after add/update
+      // Refresh seats
       const res = await API.get(`/seats?trainId=${selectedTrainId}&departureDate=${selectedDate}`);
       setSeats(res.data);
     } catch {
@@ -158,28 +155,28 @@ export default function SeatManagement() {
     }
   };
 
-  // Prepare form for editing
   const handleEdit = (seat: Seat) => {
     setEditSeat(seat);
     setForm({ seatNumber: seat.seatNumber, status: seat.status });
     setShowSeatForm(true);
   };
 
-  // Delete seat
   const handleDelete = async (seat: Seat) => {
-    if (!window.confirm("Delete this seat?")) return;
+    if (!window.confirm("Are you sure you want to delete this seat?")) return;
+
     try {
-      await API.delete(`/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`);
+      await API.delete(
+        `/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`
+      );
       toast.success("Seat deleted");
-      // Refresh seats after deletion
+      // Refresh seats
       const res = await API.get(`/seats?trainId=${selectedTrainId}&departureDate=${selectedDate}`);
       setSeats(res.data);
     } catch {
-      toast.error("Delete failed");
+      toast.error("Seat deletion failed");
     }
   };
 
-  // Change seat status
   const handleStatusChange = async (seat: Seat, newStatus: string) => {
     if (seat.status === newStatus) return;
     try {
@@ -194,7 +191,7 @@ export default function SeatManagement() {
       );
       toast.success("Seat status updated");
     } catch {
-      toast.error("Status update failed");
+      toast.error("Failed to update seat status");
     }
   };
 
@@ -202,7 +199,7 @@ export default function SeatManagement() {
   const [initCount, setInitCount] = useState("");
   const handleInitialize = async () => {
     if (!selectedTrainId || !selectedDate || !initCount) {
-      toast.error("Train, date, and seat count required");
+      toast.error("Please select train run and enter seat count for initialization");
       return;
     }
     const totalSeats = Number(initCount);
@@ -216,43 +213,43 @@ export default function SeatManagement() {
       );
       toast.success("Seats initialized");
       setInitCount("");
-      // Refresh seats after initialization
+      // Refresh seats
       const res = await API.get(`/seats?trainId=${selectedTrainId}&departureDate=${selectedDate}`);
       setSeats(res.data);
     } catch {
-      toast.error("Bulk initialize failed");
+      toast.error("Bulk seat initialization failed");
     }
   };
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-2">Seat Management</h2>
+      <h2 className="text-xl font-semibold mb-4">Seat Management</h2>
 
       <div className="mb-4">
-        <Label>Search by Train Number</Label>
+        <Label>Search Train Number</Label>
         <Input
-          placeholder="Enter Train Number (e.g. 13039)"
+          placeholder="Enter Train Number (e.g., 13039)"
           value={searchTrainNumber}
           onChange={(e) => setSearchTrainNumber(e.target.value)}
-          className="mb-2"
+          className="mb-3"
+          autoComplete="off"
         />
-      </div>
 
-      <div className="mb-4">
         <Label>Available Train Runs</Label>
         <select
-          className="w-full rounded border p-2"
+          className="w-full rounded border p-2 mb-4"
           value={selectedTrainId}
           onChange={(e) => {
-            const selectedId = e.target.value;
-            setSelectedTrainId(selectedId);
-            const trainRun = trainRuns.find((r) => r.id === selectedId);
-            setSelectedDate(trainRun?.departureDate || "");
+            const trainId = e.target.value;
+            setSelectedTrainId(trainId);
+            const run = trainRuns.find((r) => r.id === trainId);
+            setSelectedDate(run?.departureDate || "");
             resetForm();
           }}
           disabled={trainRuns.length === 0}
+          aria-label="Select Train Run"
         >
-          <option value="">-- Select Train and Date --</option>
+          <option value="">-- Select Train & Date --</option>
           {trainRuns.map((run) => (
             <option key={run.id} value={run.id}>
               {run.trainNumber} • {run.departureDate} • {run.source} → {run.destination}
@@ -263,22 +260,24 @@ export default function SeatManagement() {
 
       {selectedTrainId && selectedDate && (
         <>
-          <div className="mb-4 flex flex-wrap gap-2 items-end">
+          <div className="mb-4 flex flex-wrap gap-2 items-center">
             <Input
               className="max-w-[8rem]"
+              placeholder="Filter Seat #"
               value={searchSeat}
               onChange={(e) => setSearchSeat(e.target.value)}
-              placeholder="Search Seat #"
             />
+
             <select
               className="border rounded p-2"
               value={searchStatus}
               onChange={(e) => setSearchStatus(e.target.value)}
+              aria-label="Filter Seat Status"
             >
               <option value="">All Status</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
                 </option>
               ))}
             </select>
@@ -290,14 +289,14 @@ export default function SeatManagement() {
                 setSearchStatus("");
               }}
             >
-              Clear filters
+              Clear Filters
             </Button>
 
             <Button
               variant="default"
               onClick={() => {
+                resetForm();
                 setShowSeatForm(true);
-                setEditSeat(null);
               }}
             >
               + Add Seat
@@ -305,50 +304,53 @@ export default function SeatManagement() {
 
             <Input
               type="number"
-              placeholder="Bulk # seats"
+              placeholder="Bulk Seats #"
               className="w-24"
               value={initCount}
               min={1}
               onChange={(e) => setInitCount(e.target.value)}
+              aria-label="Number of seats to bulk initialize"
             />
 
             <Button variant="secondary" onClick={handleInitialize}>
-              Initialize All Seats
+              Initialize Seats
             </Button>
           </div>
 
           {showSeatForm && (
             <form
               onSubmit={handleSeatSubmit}
-              className="mb-4 p-4 border rounded space-y-2 bg-gray-50"
+              className="mb-6 p-4 border rounded bg-gray-50 space-y-3 max-w-md"
             >
               <h3 className="font-semibold">{editSeat ? "Edit Seat" : "Add Seat"}</h3>
               <div className="flex flex-wrap gap-2 items-center">
-                <Label>Seat Number</Label>
+                <Label htmlFor="seatNumber">Seat Number</Label>
                 <Input
+                  id="seatNumber"
                   name="seatNumber"
                   value={form.seatNumber}
                   onChange={handleSeatFormChange}
                   required
                   className="max-w-[7rem]"
-                  disabled={Boolean(editSeat)}
+                  disabled={!!editSeat}
                 />
 
-                <Label>Status</Label>
+                <Label htmlFor="status">Status</Label>
                 <select
+                  id="status"
                   name="status"
                   value={form.status}
                   onChange={handleSeatFormChange}
                   className="border p-2 rounded"
                 >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
                     </option>
                   ))}
                 </select>
 
-                <Button type="submit" variant="default">
+                <Button type="submit" variant="default" className="ml-auto">
                   {editSeat ? "Save" : "Add"}
                 </Button>
 
@@ -360,19 +362,19 @@ export default function SeatManagement() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm border rounded">
+            <table className="min-w-full border rounded text-sm">
               <thead>
                 <tr className="bg-gray-100">
-                  <th className="p-2 border-b">Seat Number</th>
-                  <th className="p-2 border-b">Status</th>
-                  <th className="p-2 border-b">Actions</th>
+                  <th className="p-2 border-b text-left">Seat Number</th>
+                  <th className="p-2 border-b text-left">Status</th>
+                  <th className="p-2 border-b"></th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
                     <td colSpan={3} className="py-8 text-center">
-                      Loading...
+                      Loading seats...
                     </td>
                   </tr>
                 ) : filteredSeats.length === 0 ? (
@@ -390,19 +392,21 @@ export default function SeatManagement() {
                           value={seat.status}
                           onChange={(e) => handleStatusChange(seat, e.target.value)}
                           className="border p-1 rounded"
+                          aria-label={`Change status for seat ${seat.seatNumber}`}
                         >
-                          {STATUS_OPTIONS.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
+                          {STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
                             </option>
                           ))}
                         </select>
                       </td>
-                      <td className="border-b p-2 flex gap-1">
+                      <td className="border-b p-2 flex gap-2 justify-end">
                         <Button
                           variant="secondary"
                           size="sm"
                           onClick={() => handleEdit(seat)}
+                          aria-label={`Edit seat ${seat.seatNumber}`}
                         >
                           Edit
                         </Button>
@@ -410,6 +414,7 @@ export default function SeatManagement() {
                           variant="destructive"
                           size="sm"
                           onClick={() => handleDelete(seat)}
+                          aria-label={`Delete seat ${seat.seatNumber}`}
                         >
                           Delete
                         </Button>
