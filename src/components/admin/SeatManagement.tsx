@@ -220,20 +220,20 @@ export default function SeatManagement() {
       {/* Train and Date selectors */}
       <div className="flex flex-col md:flex-row gap-2 mb-2">
         <div>
-          <Label>Train Number</Label>
-          <Input
-            placeholder="Enter train number"
-            value={searchTrainNumber}
-            onChange={(e) => {
-              const val = e.target.value;
-              setSearchTrainNumber(val);
-              const matchedTrain = trains.find((t) =>
-                t.trainNumber.toLowerCase().includes(val.toLowerCase())
-              );
-              setTrainId(matchedTrain?.id || "");
-            }}
+          <Label>Train</Label>
+          <select
+            className="border rounded p-2"
+            value={trainId}
+            onChange={(e) => setTrainId(e.target.value)}
             disabled={loading}
-          />
+          >
+            <option value="">Select train</option>
+            {trains.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.trainNumber} {t.source} → {t.destination}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -246,7 +246,6 @@ export default function SeatManagement() {
           />
         </div>
       </div>
-
 
       {/* Filters UI without Train # input */}
       {trainId && date && (
