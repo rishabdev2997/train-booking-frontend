@@ -92,8 +92,9 @@ export default function SeatManagement() {
     const matchesStatus = searchStatus ? s.status === searchStatus : true;
 
     const matchesTrainNumber = searchTrainNumber
-      ? train?.trainNumber.toLowerCase().includes(searchTrainNumber.toLowerCase())
-      : true;
+    ? (train?.trainNumber?.toLowerCase().includes(searchTrainNumber.toLowerCase()) ?? false)
+    : true;
+
 
     return matchesNumber && matchesStatus && matchesTrainNumber;
   });
@@ -421,4 +422,3 @@ export default function SeatManagement() {
     </div>
   );
 }
-
