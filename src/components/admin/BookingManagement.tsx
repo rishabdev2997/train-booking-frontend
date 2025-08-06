@@ -79,7 +79,7 @@ export default function BookingManagement({
 
   // Fetch trains on mount
   useEffect(() => {
-    API.get("/api/v1/trains")
+    API.get("/trains")
       .then((res) => {
         setTrains(res.data);
         setTrainsById(Object.fromEntries(res.data.map((t: Train) => [t.id, t])));
@@ -90,7 +90,7 @@ export default function BookingManagement({
   // Fetch current user id if role is USER and not passed as prop
   useEffect(() => {
     if (role === "USER" && !userId) {
-      API.get("/api/v1/auth/me")
+      API.get("/auth/me")
         .then((res) => setUserId(res.data.id))
         .catch(() => setUserId(""));
     }
@@ -107,12 +107,12 @@ export default function BookingManagement({
           return;
         }
         if (enriched) {
-          res = await API.get(`/api/v1/bookings/user/${userId}/enriched`);
+          res = await API.get(`/bookings/user/${userId}/enriched`);
         } else {
-          res = await API.get(`/api/v1/bookings/user/${userId}`);
+          res = await API.get(`/bookings/user/${userId}`);
         }
       } else {
-        res = await API.get("/api/v1/bookings");
+        res = await API.get("/bookings");
       }
 
       setBookings(
@@ -141,7 +141,7 @@ export default function BookingManagement({
   const handleCancel = async (bookingId: string) => {
     if (!window.confirm("Cancel this booking?")) return;
     try {
-      await API.post(`/api/v1/bookings/${bookingId}/cancel`);
+      await API.post(`/bookings/${bookingId}/cancel`);
       setBookings((current) =>
         current.map((b) =>
           b.bookingId === bookingId || b.id === bookingId
@@ -175,7 +175,7 @@ export default function BookingManagement({
       return;
     }
     try {
-      await API.post("/api/v1/bookings", newBooking);
+      await API.post("/bookings", newBooking);
       toast.success("Booking created!");
       setCreatingBooking(false);
       setNewBooking({

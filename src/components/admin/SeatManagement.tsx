@@ -11,7 +11,7 @@ type Seat = {
   id: string;
   trainId: string;
   seatNumber: string;
-  date: string;        // corresponds to departureDate in backend
+  date: string; // corresponds to departureDate in backend
   status: string;
 };
 
@@ -43,17 +43,23 @@ export default function SeatManagement() {
     status: "AVAILABLE",
   });
 
+  const [initCount, setInitCount] = useState("");
+
+  // Load trains on mount
   useEffect(() => {
-    API.get("/trains")
+    API.get("/trains") // No /api/v1 prefix, baseURL already has it
       .then((res) => setTrains(res.data))
       .catch(() => toast.error("Failed to load train list"));
   }, []);
 
+  // Fetch seats for selected train & date
   const fetchSeats = async () => {
     if (!trainId || !date) return;
     setLoading(true);
     try {
-      const res = await API.get(`/api/v1/seats?trainId=${trainId}&departureDate=${date}`);
+      const res = await API.get(
+        `/seats?trainId=${trainId}&departureDate=${date}` // no duplicate /api/v1
+      );
       setSeats(res.data);
     } catch {
       toast.error("Failed to fetch seats");
@@ -63,37 +69,51 @@ export default function SeatManagement() {
     }
   };
 
+  // Fetch seats when trainId or date changes
   useEffect(() => {
     fetchSeats();
   }, [trainId, date]);
 
+  // Filter seats based on search fields
   const filteredSeats = seats.filter((s) => {
     const train = trains.find((t) => t.id === s.trainId);
+
     const matchesNumber = searchSeat ? s.seatNumber.includes(searchSeat) : true;
     const matchesStatus = searchStatus ? s.status === searchStatus : true;
-    const matchesTrainNumber = searchTrainNumber ? train?.trainNumber.includes(searchTrainNumber) : true;
+    const matchesTrainNumber = searchTrainNumber
+      ? train?.trainNumber.includes(searchTrainNumber)
+      : true;
+
     return matchesNumber && matchesStatus && matchesTrainNumber;
   });
 
+  // Reset form and editing state
   const resetForm = () => {
     setForm({ seatNumber: "", status: "AVAILABLE" });
     setEditSeat(null);
     setShowSeatForm(false);
   };
 
-  const handleSeatFormChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  // Handle form input changes
+  const handleSeatFormChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
+  // Submit form for add or update seat
   const handleSeatSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
     if (!trainId || !date || !form.seatNumber) {
       toast.error("Choose train, date, and seat number");
       return;
     }
+
     try {
       if (editSeat) {
-        await API.post(`/api/v1/seats/update`, {
+        // Update existing seat status
+        await API.post(`/seats/update`, {
           trainId,
           departureDate: date,
           seatNumber: editSeat.seatNumber,
@@ -101,7 +121,8 @@ export default function SeatManagement() {
         });
         toast.success("Seat status updated");
       } else {
-        await API.post("/api/v1/seats", {
+        // Create new seat
+        await API.post(`/seats`, {
           trainId,
           departureDate: date,
           seatNumber: form.seatNumber,
@@ -109,6 +130,7 @@ export default function SeatManagement() {
         });
         toast.success("Seat added");
       }
+
       resetForm();
       fetchSeats();
     } catch {
@@ -116,17 +138,20 @@ export default function SeatManagement() {
     }
   };
 
+  // Prepare form for seat editing
   const handleEdit = (seat: Seat) => {
     setEditSeat(seat);
     setForm({ seatNumber: seat.seatNumber, status: seat.status });
     setShowSeatForm(true);
   };
 
+  // Delete seat
   const handleDelete = async (seat: Seat) => {
     if (!window.confirm("Delete this seat?")) return;
+
     try {
       await API.delete(
-        `/api/v1/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`
+        `/seats?trainId=${seat.trainId}&departureDate=${seat.date}&seatNumber=${seat.seatNumber}`
       );
       toast.success("Seat deleted");
       fetchSeats();
@@ -135,15 +160,18 @@ export default function SeatManagement() {
     }
   };
 
+  // Change seat status (e.g. from AVAILABLE to BOOKED)
   const handleStatusChange = async (seat: Seat, newStatus: string) => {
     if (seat.status === newStatus) return;
+
     try {
-      await API.post(`/api/v1/seats/update`, {
+      await API.post(`/seats/update`, {
         trainId: seat.trainId,
-        departureDate: seat.date, // Use seat.date here as your departureDate
+        departureDate: seat.date,
         seatNumber: seat.seatNumber,
         status: newStatus,
       });
+
       // Optimistically update UI
       setSeats((seats) =>
         seats.map((s) => (s.id === seat.id ? { ...s, status: newStatus } : s))
@@ -154,15 +182,22 @@ export default function SeatManagement() {
     }
   };
 
-  const [initCount, setInitCount] = useState("");
+  // Bulk initialize seats for train on date
   const handleInitialize = async () => {
     if (!trainId || !date || !initCount) {
       toast.error("Train, date, and seat count required");
       return;
     }
+
+    const totalSeats = Number(initCount);
+    if (!totalSeats || totalSeats < 1) {
+      toast.error("Seat count must be a positive number");
+      return;
+    }
+
     try {
       await API.post(
-        `/api/v1/seats/initialize?trainId=${trainId}&departureDate=${date}&totalSeats=${initCount}`
+        `/seats/initialize?trainId=${trainId}&departureDate=${date}&totalSeats=${totalSeats}`
       );
       toast.success("Seats initialized");
       setInitCount("");
@@ -175,6 +210,8 @@ export default function SeatManagement() {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-2">Seat Management</h2>
+
+      {/* Select train and date */}
       <div className="flex flex-col md:flex-row gap-2 mb-2">
         <div>
           <Label>Train</Label>
@@ -182,6 +219,7 @@ export default function SeatManagement() {
             className="border rounded p-2"
             value={trainId}
             onChange={(e) => setTrainId(e.target.value)}
+            disabled={loading}
           >
             <option value="">Select train</option>
             {trains.map((t) => (
@@ -191,16 +229,19 @@ export default function SeatManagement() {
             ))}
           </select>
         </div>
+
         <div>
           <Label>Date</Label>
           <Input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            disabled={loading}
           />
         </div>
       </div>
 
+      {/* Filters & actions */}
       {trainId && date && (
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <Input
@@ -222,9 +263,12 @@ export default function SeatManagement() {
           >
             <option value="">All Status</option>
             {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>
+                {s}
+              </option>
             ))}
           </select>
+
           <Button
             variant="outline"
             onClick={() => {
@@ -235,6 +279,7 @@ export default function SeatManagement() {
           >
             Clear filters
           </Button>
+
           <Button
             variant="default"
             onClick={() => {
@@ -244,6 +289,7 @@ export default function SeatManagement() {
           >
             + Add Seat
           </Button>
+
           <Input
             type="number"
             placeholder="Bulk # seats"
@@ -252,18 +298,21 @@ export default function SeatManagement() {
             min={1}
             onChange={(e) => setInitCount(e.target.value)}
           />
+
           <Button variant="secondary" onClick={handleInitialize}>
             Initialize All Seats
           </Button>
         </div>
       )}
 
+      {/* Seat add/edit form */}
       {showSeatForm && (
         <form
           onSubmit={handleSeatSubmit}
           className="mb-4 p-4 border rounded space-y-2 bg-gray-50"
         >
           <h3 className="font-semibold">{editSeat ? "Edit Seat" : "Add Seat"}</h3>
+
           <div className="flex flex-wrap gap-2 items-center">
             <Label>Seat Number</Label>
             <Input
@@ -274,6 +323,7 @@ export default function SeatManagement() {
               className="max-w-[7rem]"
               disabled={Boolean(editSeat)}
             />
+
             <Label>Status</Label>
             <select
               name="status"
@@ -287,9 +337,11 @@ export default function SeatManagement() {
                 </option>
               ))}
             </select>
+
             <Button type="submit" variant="default">
               {editSeat ? "Save" : "Add"}
             </Button>
+
             <Button type="button" variant="outline" onClick={resetForm}>
               Cancel
             </Button>
@@ -297,6 +349,7 @@ export default function SeatManagement() {
         </form>
       )}
 
+      {/* Seats Table */}
       {trainId && date && (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border rounded">
