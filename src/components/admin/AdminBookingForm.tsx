@@ -181,13 +181,13 @@ export default function AdminBookingForm({
           Clear
         </Button>
         <div className="text-xs text-muted-foreground mb-2">
-          Showing {Math.min(filteredTrains.length, 5)} of {filteredTrains.length} trains
+          Showing {Math.min(filteredTrains.length, 10)} of {filteredTrains.length} trains
         </div>
         <div className="mb-2 flex flex-wrap gap-2">
           {filteredTrains.length === 0 ? (
             <div className="text-center text-gray-400 p-2 w-full">No trains found.</div>
           ) : (
-            filteredTrains.slice(0, 5).map(train => (
+            filteredTrains.slice(0, 10).map(train => (
               <div
                 key={train.id}
                 style={{ width: "300px", minWidth: "250px", cursor: "pointer" }}
@@ -209,7 +209,7 @@ export default function AdminBookingForm({
             required
           >
             <option value="">Select Train</option>
-            {filteredTrains.slice(0, 5).map(train => (
+            {filteredTrains.slice(0, 10).map(train => (
               <option key={train.id} value={train.id}>
                 {train.trainNumber ? `${train.trainNumber} • ${train.source} → ${train.destination}` : train.name || train.id}
                 {train.departureTime ? ` • ${train.departureTime}` : ''}
