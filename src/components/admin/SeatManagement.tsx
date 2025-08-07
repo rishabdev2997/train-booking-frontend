@@ -103,8 +103,9 @@ export default function SeatManagement() {
       .finally(() => setLoadingSeats(false));
   }, [selectedTrainId, selectedDate]);
 
-  // Local seat filters
+  // *** Updated filtering logic to hide BOOKED seats completely ***
   const filteredSeats = seats.filter((s) => {
+    if (s.status === "BOOKED") return false; // exclude booked seats entirely
     const matchesNumber = searchSeatNumber
       ? s.seatNumber.toLowerCase().includes(searchSeatNumber.toLowerCase())
       : true;
@@ -193,8 +194,6 @@ export default function SeatManagement() {
       toast.error("Failed to update seat status");
     }
   };
-
-  // Bulk seats code can be left as before
 
   return (
     <div>
@@ -313,8 +312,6 @@ export default function SeatManagement() {
             >
               + Add Seat
             </Button>
-
-            {/* Bulk seat initialization etc, as before */}
           </div>
 
           {showSeatForm && (
